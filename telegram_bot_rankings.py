@@ -6,7 +6,11 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
     filters, ContextTypes, ChatMemberHandler
 )
-from datetime import datetime
+from datetime import datetime, timedelta
+from collections import defaultdict
+import os
+import json
+import base64
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -17,38 +21,28 @@ TELEGRAM_TOKEN = "7541826709:AAF1A-1Efcb88oahgxOt5mTuzy6nP6Q7Jes"
 # Google Sheets 设置
 SHEET_NAME = "日报表"
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-import os
-import json
-import base64
-from oauth2client.service_account import ServiceAccountCredentials
 
-# 设置 Google Sheets API 权限范围
-SCOPE = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-
-# 从环境变量中获取 Base64 编码的 JSON
+# 解析 base64 编码的 Google 凭据
 GOOGLE_CREDENTIALS_BASE64 = os.getenv("GOOGLE_CREDENTIALS")
-
 if not GOOGLE_CREDENTIALS_BASE64:
     raise ValueError("环境变量 GOOGLE_CREDENTIALS 未设置，请在 Render 添加。")
-
-# 解码 Base64 字符串为 JSON 对象
 GOOGLE_CREDENTIALS_JSON = json.loads(base64.b64decode(GOOGLE_CREDENTIALS_BASE64))
-
-# 用字典创建 Google 授权凭证
 CREDS = ServiceAccountCredentials.from_json_keyfile_dict(GOOGLE_CREDENTIALS_JSON, SCOPE)
-
 client = gspread.authorize(CREDS)
 sheet = client.open(SHEET_NAME).sheet1
 
-# 🟢 /start - 开始指令
+# 🟢 /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await help_command(update, context)
 
-# 📋 /report - 提交日报
+# 📋 /report
 async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📋 Por favor, introduzca el informe diario de hoy en el siguiente formato：\n\nNúmero de BD enviados | fecha | Número de depositantes | Monto del depósito")
+    await update.message.reply_text(
+        "📋 Por favor, introduzca el informe diario de hoy en el siguiente formato：\n\n"
+        "Número de BD enviados | fecha | Número de depositantes | Monto del depósito"
+    )
 
-# 📆 /today - 查询是否提交
+# 📆 /today
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user.full_name
     today_str = datetime.now().strftime("%Y-%m-%d")
@@ -58,9 +52,9 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if today_records:
         await update.message.reply_text(f"✅ Has enviado tu informe diario hoy：\n\n{' | '.join(today_records[0])}")
     else:
-        await update.message.reply_text("📭 No has enviado tu informe diario hoy. Envía /report para empezar a rellenarlo.。")
+        await update.message.reply_text("📭 No has enviado tu informe diario hoy. Envía /report para empezar a rellenarlo.")
 
-# ❌ /undo - 撤销最后一条日报
+# ❌ /undo
 async def undo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user.full_name
     records = sheet.get_all_values()
@@ -72,7 +66,7 @@ async def undo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
     await update.message.reply_text("🔍 No se encontró el registro que enviaste。")
 
-# 🆘 /help - 帮助说明
+# 🆘 /help
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "🤖 Bienvenido al Robot de Informes Diarios del Equipo JonyK！\n\n"
@@ -80,26 +74,27 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/report - Presentar informe diario\n"
         "/today - Comprueba si se ha enviado hoy\n"
         "/undo - Eliminar el registro diario más reciente\n"
+        "/rank - Clasificación semanal\n"
         "/help - Ver información de ayuda"
     )
     await update.message.reply_text(help_text)
 
-# 📩 普通文本：解析日报内容
+# 📩 文本信息处理（仅限私聊）
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.chat.type != "private":
-        return  # 群组内不处理普通文本
+        return
     user = update.message.from_user.full_name
     text = update.message.text
     parts = [p.strip() for p in text.split("|")]
     if len(parts) != 4:
-        await update.message.reply_text("❌ El formato es incorrecto. Utilice | para separar y completar los 4 elementos.。")
+        await update.message.reply_text("❌ El formato es incorrecto. Utilice | para separar y completar los 4 elementos.")
         return
     parts.insert(0, user)
     parts.append(datetime.now().strftime("%Y-%m-%d"))
     sheet.append_row(parts)
-    await update.message.reply_text("✅ ¡Informe diario grabado! Gracias por enviarlo.。")
+    await update.message.reply_text("✅ ¡Informe diario grabado! Gracias por enviarlo。")
 
-# 🔔 新成员加入群组，自动提示
+# 🔔 群聊欢迎提示
 async def welcome_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = update.chat_member
     if result.new_chat_member.status == ChatMember.MEMBER:
@@ -109,38 +104,55 @@ async def welcome_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text=f"👋 ¡Bienvenido {name} al grupo! Envíame un mensaje privado y envía /report para empezar a enviar informes diarios. 📝"
         )
 
+# 📊 /rank 排行榜命令
+def get_weekly_ranking(sheet):
+    today = datetime.now().date()
+    start_of_week = today - timedelta(days=today.weekday())
+    data = sheet.get_all_records()
+    rankings = defaultdict(int)
+
+    for row in data:
+        try:
+            name = row.get("用户名") or row.get("NAME") or row.get("Nombre") or row.get("Usuario") or row.get("用户") or row.get("Name") or row.get("name") or row.get("Nombre completo") or row.get("Empleado")
+            fecha_str = row.get("fecha") or row.get("Fecha") or row.get("date") or row.get("时间") or ""
+            deposit_count = int(row.get("Número de depositantes", 0))
+            fecha = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+            if fecha >= start_of_week:
+                rankings[name] += deposit_count
+        except Exception as e:
+            print(f"[❌] Error processing row: {row} - {e}")
+
+    return sorted(rankings.items(), key=lambda x: x[1], reverse=True)
+
+async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    ranking = get_weekly_ranking(sheet)
+    if not ranking:
+        await update.message.reply_text("⚠️ No hay datos de esta semana aún.")
+        return
+
+    msg = "🏆 Clasificación semanal por número de depositantes:\n\n"
+    for i, (name, total) in enumerate(ranking, 1):
+        msg += f"{i}. {name} - {total} depositantes\n"
+
+    await update.message.reply_text(msg)
+
 # 主入口
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-    # 指令处理
+    # 注册指令
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("report", report))
     app.add_handler(CommandHandler("today", today))
     app.add_handler(CommandHandler("undo", undo))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("rank", rank))
 
-    # 文本信息处理（仅私聊）
+    # 文本消息（仅限私聊）
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # 群聊欢迎提示
+    # 群组欢迎语
     app.add_handler(ChatMemberHandler(welcome_group, ChatMemberHandler.CHAT_MEMBER))
 
-    # 启动机器人
-    app.run_polling()
-import asyncio
-
-async def test_send_to_group(application):
-    chat_id = -1002686147703  # 你的群组 ID，必须是负号开头
-    try:
-        await application.bot.send_message(chat_id=chat_id, text="👋 Bot i can say！")
-        print("✅ ")
-    except Exception as e:
-        print(f"❌ bad: {e}")
-
-# 放在 __main__ 中调用一次
-if __name__ == '__main__':
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    ...
-    asyncio.run(test_send_to_group(app))
+    # 启动 Bot
     app.run_polling()
