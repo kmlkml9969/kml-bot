@@ -106,7 +106,7 @@ async def welcome_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         name = result.new_chat_member.user.full_name
         await context.bot.send_message(
             chat_id=update.chat_member.chat.id,
-            text=f"👋 ¡Bienvenido {nombre} al grupo! Envíame un mensaje privado y envía /report para empezar a enviar informes diarios. 📝"
+            text=f"👋 ¡Bienvenido {name} al grupo! Envíame un mensaje privado y envía /report para empezar a enviar informes diarios. 📝"
         )
 
 # 主入口
