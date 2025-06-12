@@ -17,7 +17,26 @@ TELEGRAM_TOKEN = "7541826709:AAF1A-1Efcb88oahgxOt5mTuzy6nP6Q7Jes"
 # Google Sheets 设置
 SHEET_NAME = "日报表"
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-CREDS = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", SCOPE)
+import os
+import json
+import base64
+from oauth2client.service_account import ServiceAccountCredentials
+
+# 设置 Google Sheets API 权限范围
+SCOPE = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+
+# 从环境变量中获取 Base64 编码的 JSON
+GOOGLE_CREDENTIALS_BASE64 = os.getenv("GOOGLE_CREDENTIALS")
+
+if not GOOGLE_CREDENTIALS_BASE64:
+    raise ValueError("环境变量 GOOGLE_CREDENTIALS 未设置，请在 Render 添加。")
+
+# 解码 Base64 字符串为 JSON 对象
+GOOGLE_CREDENTIALS_JSON = json.loads(base64.b64decode(GOOGLE_CREDENTIALS_BASE64))
+
+# 用字典创建 Google 授权凭证
+CREDS = ServiceAccountCredentials.from_json_keyfile_dict(GOOGLE_CREDENTIALS_JSON, SCOPE)
+
 client = gspread.authorize(CREDS)
 sheet = client.open(SHEET_NAME).sheet1
 
