@@ -128,3 +128,19 @@ if __name__ == '__main__':
 
     # 启动机器人
     app.run_polling()
+import asyncio
+
+async def test_send_to_group(application):
+    chat_id = -1002686147703  # 你的群组 ID，必须是负号开头
+    try:
+        await application.bot.send_message(chat_id=chat_id, text="👋 Bot i can say！")
+        print("✅ ")
+    except Exception as e:
+        print(f"❌ bad: {e}")
+
+# 放在 __main__ 中调用一次
+if __name__ == '__main__':
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    ...
+    asyncio.run(test_send_to_group(app))
+    app.run_polling()
