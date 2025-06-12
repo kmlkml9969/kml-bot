@@ -130,7 +130,7 @@ async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ No hay datos de esta semana aún.")
         return
 
-    msg = "🏆 Clasificación semanal por número de depositantes:\n\n"
+    msg = "🏆 Peringkat minggu ini 🏆:\n\n"
     for i, (name, total) in enumerate(ranking, 1):
         msg += f"{i}. {name} - {total} depositantes\n"
 
